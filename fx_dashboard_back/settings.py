@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -82,15 +83,22 @@ CORS_ALLOW_CREDENTIALS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Django cache settings (LocMemCache with TTLs for endpoints)
+# Django cache settings - Redis
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
-        'TIMEOUT': 300,  # Default 5 minutes cache
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/0'),
         'OPTIONS': {
-            'MAX_ENTRIES': 1000
-        }
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 100,
+                'retry_on_timeout': True,
+            },
+        },
+        'KEY_PREFIX': 'fx',
+        'TIMEOUT': 300,
     }
 }
 
@@ -98,4 +106,20 @@ CACHES = {
 CACHE_TIMEOUT = {
     'currencies': 86400,      # 24 hours
     'time_series': 1800,     # 30 minutes
+}
+
+# Celery Configuration
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/1')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://127.0.0.1:6379/1')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+# Celery Beat Schedule - Run on 1st of every month at 2 AM UTC
+CELERY_BEAT_SCHEDULE = {
+    'fetch-last-month-data': {
+        'task': 'exchange.tasks.fetch_last_month_data',
+        'schedule': crontab(day_of_month=1, hour=2, minute=0),
+    },
 }

@@ -4,8 +4,8 @@ import hashlib
 import json
 
 
-class TTLCacheManager:
-    """TTL cache manager for consistent keying and timeouts."""
+class CacheManager:
+    """Cache manager for consistent keying and timeouts."""
 
     @staticmethod
     def generate_cache_key(prefix, params):

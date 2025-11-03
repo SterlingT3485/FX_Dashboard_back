@@ -5,7 +5,7 @@ import requests
 from datetime import datetime, timedelta
 import logging
 from django.utils import timezone
-from .cache_utils import TTLCacheManager
+from .cache_utils import CacheManager
 from .models import ExchangeRate, Currency
 from .db_utils import DatabaseManager
 
@@ -39,11 +39,11 @@ class TimeSeriesView(View):
                 'base': base_currency,
                 'symbols': symbols,
             }
-            cache_key = TTLCacheManager.generate_cache_key('time_series', cache_params)
-            cache_timeout = TTLCacheManager.get_cache_timeout('time_series')
+            cache_key = CacheManager.generate_cache_key('time_series', cache_params)
+            cache_timeout = CacheManager.get_cache_timeout('time_series')
 
             # 1. Try cache first
-            cached = TTLCacheManager.get_cached_data(cache_key, cache_timeout)
+            cached = CacheManager.get_cached_data(cache_key, cache_timeout)
             if cached:
                 return JsonResponse({
                     'success': True,
@@ -61,7 +61,7 @@ class TimeSeriesView(View):
                 db_data = DatabaseManager.get_time_series_data(base_currency, target_currencies, start_date, end_date)
                 
                 if db_data:
-                    TTLCacheManager.set_cached_data(cache_key, db_data, cache_timeout)
+                    CacheManager.set_cached_data(cache_key, db_data, cache_timeout)
                     return JsonResponse({
                         'success': True,
                         'data': db_data,
@@ -102,7 +102,7 @@ class TimeSeriesView(View):
                 logger.error(f"Failed to batch save time series data: {str(e)}")
 
             # 5. Store to cache
-            TTLCacheManager.set_cached_data(cache_key, api_data, cache_timeout)
+            CacheManager.set_cached_data(cache_key, api_data, cache_timeout)
             
             return JsonResponse({
                 'success': True,
@@ -130,11 +130,11 @@ class CurrenciesView(View):
     def get(self, request):
         try:
             # cache key & timeout
-            cache_key = TTLCacheManager.generate_cache_key('currencies', {})
-            cache_timeout = TTLCacheManager.get_cache_timeout('currencies')
+            cache_key = CacheManager.generate_cache_key('currencies', {})
+            cache_timeout = CacheManager.get_cache_timeout('currencies')
 
             # 1. Try cache first
-            cached = TTLCacheManager.get_cached_data(cache_key, cache_timeout)
+            cached = CacheManager.get_cached_data(cache_key, cache_timeout)
             if cached:
                 return JsonResponse({
                     'success': True,
@@ -148,7 +148,7 @@ class CurrenciesView(View):
                 if currencies.exists():
                     db_data = {currency.code: currency.name for currency in currencies}
                     # Update cache
-                    TTLCacheManager.set_cached_data(cache_key, db_data, cache_timeout)
+                    CacheManager.set_cached_data(cache_key, db_data, cache_timeout)
                     return JsonResponse({
                         'success': True,
                         'data': db_data,
@@ -171,7 +171,7 @@ class CurrenciesView(View):
                 logger.error(f"Failed to save currencies to database: {str(e)}")
 
             # 5. Store to cache
-            TTLCacheManager.set_cached_data(cache_key, api_data, cache_timeout)
+            CacheManager.set_cached_data(cache_key, api_data, cache_timeout)
             
             return JsonResponse({
                 'success': True,

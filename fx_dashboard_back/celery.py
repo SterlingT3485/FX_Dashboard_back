@@ -1,13 +1,8 @@
-# import os
-# from fx_dashboard_back.celery import Celery
+import os
+from celery import Celery
 
-# # set Django's default settings module
-# os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'fx_dashboard_back.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'fx_dashboard_back.settings')
 
-# app = Celery('fx_dashboard_back')
-
-# # read Celery configuration from Django settings
-# app.config_from_object('django.conf:settings', namespace='CELERY')
-
-# # automatically discover all tasks.py files in Django applications
-# app.autodiscover_tasks()
+app = Celery('fx_dashboard_back')
+app.config_from_object('django.conf:settings', namespace='CELERY')
+app.autodiscover_tasks()
