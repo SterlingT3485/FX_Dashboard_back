@@ -52,11 +52,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'fx_dashboard_back.wsgi.application'
 
-# temporarily use SQLite, switch to PostgreSQL later
+  # PostgreSQL
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('POSTGRES_DB', 'fxdb'),
+        'USER': os.environ.get('POSTGRES_USER', 'fxuser'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'fxpass123'),
+        'HOST': os.environ.get('POSTGRES_HOST', '127.0.0.1'),
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
     }
 }
 

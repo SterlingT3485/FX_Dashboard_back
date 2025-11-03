@@ -2,8 +2,14 @@
 from django.http import JsonResponse
 from django.views import View
 import requests
+from datetime import datetime, timedelta
+import logging
+from django.utils import timezone
 from .cache_utils import TTLCacheManager
+from .models import ExchangeRate, Currency
+from .db_utils import DatabaseManager
 
+logger = logging.getLogger(__name__)
 
 class TimeSeriesView(View):
     """
@@ -36,7 +42,7 @@ class TimeSeriesView(View):
             cache_key = TTLCacheManager.generate_cache_key('time_series', cache_params)
             cache_timeout = TTLCacheManager.get_cache_timeout('time_series')
 
-            # try cache first
+            # 1. Try cache first
             cached = TTLCacheManager.get_cached_data(cache_key, cache_timeout)
             if cached:
                 return JsonResponse({
@@ -45,14 +51,33 @@ class TimeSeriesView(View):
                     'source': 'cache'
                 })
 
-            # build date range
+            # 2. Cache miss, try database
+            target_currencies = []
+            if symbols:
+                target_currencies = [s.strip().upper() for s in symbols.split(',')]
+            
+            try:
+                # Try to get data from database
+                db_data = DatabaseManager.get_time_series_data(base_currency, target_currencies, start_date, end_date)
+                
+                if db_data:
+                    TTLCacheManager.set_cached_data(cache_key, db_data, cache_timeout)
+                    return JsonResponse({
+                        'success': True,
+                        'data': db_data,
+                        'source': 'database'
+                    })
+            except Exception as e:
+                logger.error(f"Failed to get time series from database: {str(e)}")
+            
+            # 3. Database doesn't have enough data, call API
             date_range = f"{start_date}..{end_date}" if end_date else f"{start_date}.."
             
             # build API URL
             url = f"https://api.frankfurter.dev/v1/{date_range}"
             params = {}
             
-            if base_currency and base_currency != 'EUR':
+            if base_currency:
                 params['base'] = base_currency
             if symbols:
                 params['symbols'] = symbols
@@ -61,14 +86,27 @@ class TimeSeriesView(View):
             response = requests.get(url, params=params, timeout=15) 
             response.raise_for_status()
             
-            data = response.json()
+            api_data = response.json()
 
-            # store to cache
-            TTLCacheManager.set_cached_data(cache_key, data, cache_timeout)
+            # 4. Save to database
+            try:
+                for date_str, rates_on_date in api_data['rates'].items():
+                    for target_currency, rate in rates_on_date.items():
+                        DatabaseManager.save_exchange_rate(
+                            api_data['base'],
+                            target_currency,
+                            rate,
+                            date_str
+                        )
+            except Exception as e:
+                logger.error(f"Failed to batch save time series data: {str(e)}")
+
+            # 5. Store to cache
+            TTLCacheManager.set_cached_data(cache_key, api_data, cache_timeout)
             
             return JsonResponse({
                 'success': True,
-                'data': data,
+                'data': api_data,
                 'source': 'frankfurter_api'
             })
             
@@ -95,6 +133,7 @@ class CurrenciesView(View):
             cache_key = TTLCacheManager.generate_cache_key('currencies', {})
             cache_timeout = TTLCacheManager.get_cache_timeout('currencies')
 
+            # 1. Try cache first
             cached = TTLCacheManager.get_cached_data(cache_key, cache_timeout)
             if cached:
                 return JsonResponse({
@@ -103,19 +142,40 @@ class CurrenciesView(View):
                     'source': 'cache'
                 })
 
-            # call Frankfurter API
+            # 2. Cache miss, try database
+            try:
+                currencies = Currency.objects.all()
+                if currencies.exists():
+                    db_data = {currency.code: currency.name for currency in currencies}
+                    # Update cache
+                    TTLCacheManager.set_cached_data(cache_key, db_data, cache_timeout)
+                    return JsonResponse({
+                        'success': True,
+                        'data': db_data,
+                        'source': 'database'
+                    })
+            except Exception as e:
+                logger.error(f"Failed to get currencies from database: {str(e)}")
+
+            # 3. Database doesn't have data, call API
             url = "https://api.frankfurter.dev/v1/currencies"
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             
-            data = response.json()
+            api_data = response.json()
 
-            # store to cache
-            TTLCacheManager.set_cached_data(cache_key, data, cache_timeout)
+            # 4. Save to database
+            try:
+                DatabaseManager.save_currencies(api_data)
+            except Exception as e:
+                logger.error(f"Failed to save currencies to database: {str(e)}")
+
+            # 5. Store to cache
+            TTLCacheManager.set_cached_data(cache_key, api_data, cache_timeout)
             
             return JsonResponse({
                 'success': True,
-                'data': data,
+                'data': api_data,
                 'source': 'frankfurter_api'
             })
             
