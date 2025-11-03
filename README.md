@@ -2,6 +2,39 @@
 
 Django-based forex exchange rate API service with Redis caching and PostgreSQL database.
 
+## Data Flow
+
+![design](./Diagram.jpg)
+
+## Cache/Storage Logic Versions
+
+- v1) No cache, always Fetch data from FrankFurter API
+- v2) Use TTLCache to store previously fetched data
+- v3) Use PostgreSQL to store previously fetched data
+- v4) Add Redis to cache data with high access frequency
+
+## Future Improvement
+
+- v5(under developing): Add Partial Cache Logic, compare the data in our DB and the data request by user, only fetch the difference between them from FrankFurter API.
+
+  e.g. If user has previously requested `USD->CAD: 2024-02-01---2024-04-01`, and then request `USD->CAD/EUR: 2024-01-01---2024-05-01`, we should only request
+  `USD->CAD: 2024-01-01---2024-01-31`, `USD->CAD: 2024-04-02---2024-05-01` and `USD->EUR: 2024-01-01---2024-05-01`, to make the most use of data in DB and
+  reduce API transmission as much as possible.
+
+### Tradeoff:
+
+This partial caching strategy is a trade from `Local Computing + DB Lookup + partial fetch` to `Direct Remote API fetch`,
+Further expriment should be done to measure the time/space consumption of each strategy under various data size and network situation,
+which helps to determine the break-even point and the optimal strategy based on actual performance metrics.
+
+### Main Factor to be benchmarked:
+
+- Small Data Ranges: `Direct Remote API fetch` may be faster than `DB lookup + partial fetch`
+- Big Data Ranges: `DB lookup + partial fetch` may be faster than `Direct Remote API fetch`
+- Local Data Sparsity: If the local data is sparse, `DB lookup + partial fetch` may produce overhead because of `multiple small API fetches` is slower than one big `Direct Remote API fetch` (maybe could be solved by multitask, and always fetch whole month)
+- Network Latency: Slow network may cause large `Direct Remote API fetch` to be slower than `DB lookup + partial fetch`
+- Code Complexity: Unfortunately, Human do make mistake, introducing more complex logic to codebase would indeed increase the possibility of bug and maintaince cost.
+
 ## Features
 
 - Time series exchange rate data API
@@ -127,10 +160,3 @@ Example:
 ```
 GET /api/timeseries/?start_date=2024-10-01&end_date=2024-10-10&base=USD&symbols=EUR,GBP
 ```
-
-## Data Flow
-
-1. **Cache Layer**: Check Redis cache first
-2. **Database Layer**: If cache miss, check PostgreSQL database (only if database date range fully covers request range for all target currencies)
-3. **API Layer**: If database doesn't have complete data, call Frankfurter API
-4. **Persistence**: Save API responses to database and cache for future requests
