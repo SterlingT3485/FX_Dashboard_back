@@ -16,12 +16,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',  # CORS support
     'exchange',  # our app
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS middleware 
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -65,5 +67,13 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# CORS settings - allow frontend to access API
+CORS_ALLOWED_ORIGINS = [
+    "https://famous-trifle-b3b58e.netlify.app",
+]
+
+# Allow credentials (cookies, authorization headers, etc.)
+CORS_ALLOW_CREDENTIALS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
