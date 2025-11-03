@@ -77,3 +77,21 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Django cache settings (LocMemCache with TTLs for endpoints)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+        'TIMEOUT': 300,  # Default 5 minutes cache
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000
+        }
+    }
+}
+
+# Per-feature cache timeouts (in seconds)
+CACHE_TIMEOUT = {
+    'currencies': 86400,      # 24 hours
+    'time_series': 1800,     # 30 minutes
+}
