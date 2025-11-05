@@ -96,22 +96,57 @@ class DatabaseManager:
         return bool(min_date and max_date and (min_date <= request_start) and (max_date >= request_end))
     
     @staticmethod
+    def find_missing_date_ranges(base_currency, target_currency, request_start, request_end):
+        """Find missing date ranges for a specific currency pair.
+        
+        Returns list of (start_date, end_date) tuples for missing ranges.
+        """
+        # Get existing dates from database
+        query = ExchangeRate.objects.filter(
+            base_currency=base_currency,
+            target_currency=target_currency,
+            date__gte=request_start,
+            date__lte=request_end
+        ).values_list('date', flat=True)
+        existing_dates = set(query)
+        
+        if not existing_dates:
+            # No data at all, return the full range
+            return [(request_start, request_end)]
+        
+        missing_ranges = []
+        current_date = request_start
+
+        # Find missing ranges
+        while current_date <= request_end:
+            if current_date not in existing_dates:
+                # Found start of missing range
+                missing_start = current_date
+                # Find end of missing range
+                while current_date <= request_end and current_date not in existing_dates:
+                    current_date += timedelta(days=1)
+                missing_end = current_date - timedelta(days=1)
+                missing_ranges.append((missing_start, missing_end))
+            else:
+                current_date += timedelta(days=1)
+        
+        return missing_ranges
+    
+    @staticmethod
     def get_time_series_data(base_currency, target_currencies, start_date, end_date):
         """Get time series data from database for the specified date range.
         
-        Returns formatted data dict if found, None otherwise.
+        Returns:
+        - If fully covered: data dict
+        - If partially covered: tuple (data_dict, missing_ranges_dict)
+        - If no data: None
         """
         try:
-            # Check if database covers the range
             from datetime import datetime
             request_start = datetime.strptime(start_date, '%Y-%m-%d').date()
             request_end = datetime.strptime(end_date, '%Y-%m-%d').date() if end_date else datetime.now().date()
             
-            if not DatabaseManager.database_covers_range(base_currency, target_currencies, request_start, request_end):
-                logger.debug(f"Database doesn't fully cover request range [{request_start}, {request_end}] for all target currencies")
-                return None
-            
-            # Query the specific data
+            # Query existing data
             query = ExchangeRate.objects.filter(
                 base_currency=base_currency,
                 date__gte=start_date
@@ -143,9 +178,36 @@ class DatabaseManager:
                     db_data['rates'][date_str] = {}
                 db_data['rates'][date_str][rate.target_currency] = float(rate.rate)
             
-            return db_data
+            # Check if database fully covers the range
+            if DatabaseManager.database_covers_range(base_currency, target_currencies, request_start, request_end):
+                # Fully covered, return data dict
+                return db_data
+            
+            # Partially covered, find missing ranges
+            missing_ranges = {}
+            if target_currencies:
+                for target_currency in target_currencies:
+                    ranges = DatabaseManager.find_missing_date_ranges(
+                        base_currency, target_currency, request_start, request_end
+                    )
+                    if ranges:
+                        missing_ranges[target_currency] = ranges
+            else:
+                # Get all target that exist for this base
+                existing_targets = set(rate.target_currency for rate in rates)
+                
+                if existing_targets:
+                    # Check coverage for each existing target currency
+                    for target_currency in existing_targets:
+                        ranges = DatabaseManager.find_missing_date_ranges(
+                            base_currency, target_currency, request_start, request_end
+                        )
+                        if ranges:
+                            missing_ranges[target_currency] = ranges
+            
+            # Return tuple if partially covered
+            return db_data, missing_ranges
             
         except Exception as e:
             logger.error(f"Failed to get time series data from database: {str(e)}")
             return None
-
