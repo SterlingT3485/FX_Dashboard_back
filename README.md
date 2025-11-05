@@ -15,6 +15,8 @@ Django-based forex exchange rate API service with Redis caching and PostgreSQL d
 
 ## Future Improvement
 
+Update: a runnable v5 is now on branch partial_cache, while it seems slower than our expectation, so further improve and experiment may be necessary
+
 - v5(under developing): Add Partial Cache Logic, compare the data in our DB and the data request by user, only fetch the difference between them from FrankFurter API.
 
   e.g. If user has previously requested `USD->CAD: 2024-02-01---2024-04-01`, and then request `USD->CAD/EUR: 2024-01-01---2024-05-01`, we should only request
